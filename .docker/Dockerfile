@@ -176,8 +176,24 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+
 # ==========================================
-# 3. User Creation & Shell Setup
+# 3. Installing volatile packages
+# ==========================================
+RUN <<'EOF'
+    #!/bin/bash
+    set -euo pipefail
+    echo ">>> [Dev Tools] Installing volatile packages..."
+    apt-get update && apt-get install --no-install-recommends -y \
+        tcc
+
+	apt-get autoremove --purge -y
+	apt-get clean -y
+	rm -rf /var/lib/apt/lists/*
+EOF
+
+# ==========================================
+# 4. User Creation & Shell Setup
 # ==========================================
 WORKDIR /home/${USERNAME}
 ENV ZSH="/home/${USERNAME}/.oh-my-zsh"
@@ -225,7 +241,7 @@ chown -R "${USERNAME}:${GID}" "/home/${USERNAME}"
 EOF
 
 # ==========================================
-# 4. Final Entrypoint & User Config
+# 5. Final Entrypoint & User Config
 # ==========================================
 COPY --chown=${USERNAME}:${GID} ./.zshrc ${HOME}/.zshrc
 COPY --chown=${USERNAME}:${GID} ./entrypoint.sh /home/entrypoint.sh
