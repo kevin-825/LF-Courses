@@ -50,14 +50,18 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 
-.PHONY: clean
+.PHONY: clean dump_cpp info_macro dump_include_dirs
 clean:
 	rm -r $(BUILD_DIR)
+
 dump_cpp:
-	gcc -dM -E - < /dev/null | grep -E '(__linux__|__x86_64__|__riscv|__GNUC__|__STDC_VERSION__)'
+	$(CC) $(INC_FLAGS) $(CFLAGS) -dM -E - < /dev/null | grep -E '(__linux__|__x86_64__|__riscv|__GNUC__|__STDC_VERSION__)'
 
 info_macro:
 	gdb -batch -ex "break main" -ex "run" -ex "info macro SCALE_FACTOR" ${BUILD_DIR}/$(TARGET_EXEC)
+
+dump_include_dirs:
+	$(CC) $(INC_FLAGS) $(CFLAGS) -E -v - < /dev/null
 
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
