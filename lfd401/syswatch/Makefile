@@ -1,118 +1,161 @@
-# ==============================================================================
-# SYSWATCH Makefile — Milestone 2 (Shared/Static Libraries & Dynamic Plugins)
-# ==============================================================================
+# Disable built-in rules, clear suffix list, and delete failed targets
+MAKEFLAGS += --no-builtin-rules
+.SUFFIXES:
+.DELETE_ON_ERROR:
 
-# Target Names
-LIB_NAME        := syswatch
-LIB_STATIC      := lib$(LIB_NAME).a
-LIB_SHARED_REAL := lib$(LIB_NAME).so.1.0.0
+# ==============================================================================
+# 1. Target Names & Directory Structure
+# ==============================================================================
+LIB_NAME         := syswatch
+LIB_STATIC       := lib$(LIB_NAME).a
+LIB_SHARED_REAL  := lib$(LIB_NAME).so.1.0.0
 LIB_SHARED_SONAME:= lib$(LIB_NAME).so.1
-LIB_SHARED_LINK := lib$(LIB_NAME).so
+LIB_SHARED_LINK  := lib$(LIB_NAME).so
 
-DAEMON_TARGET   := syswatchd
-CTL_TARGET      := syswatchctl
-PLUGIN_TARGET   := plugin_dummy_cpu.so
+DAEMON_TARGET    := syswatchd
+CTL_TARGET       := syswatchctl
+PLUGIN_TARGET    := plugin_dummy_cpu.so
 
-# Directory Structure
-BUILD_DIR       := ./build
-BUILD_LIB_DIR   := $(BUILD_DIR)/lib
-BUILD_BIN_DIR   := $(BUILD_DIR)/bin
-SRC_DIR         := ./src
-PLUGIN_SRC_DIR  := ./plugins
-INC_DIR         := include
+SRC_DIR          := src
+PLUGIN_SRC_DIR   := plugins
+INC_DIR          := include
 
-# Compiler & Tools
-CC              := gcc
-AR              := ar
-LN              := ln -sf
+BUILD_DIR        := build
+BUILD_LIB_DIR    := $(BUILD_DIR)/lib
+BUILD_BIN_DIR    := $(BUILD_DIR)/bin
+OBJ_STATIC_DIR   := $(BUILD_DIR)/obj/static
+OBJ_PIC_DIR      := $(BUILD_DIR)/obj/pic
+OBJ_BIN_DIR      := $(BUILD_DIR)/obj/bin
+OBJ_PLUGIN_DIR   := $(BUILD_DIR)/obj/plugin
 
-# Flags
-INC_FLAGS       := -I$(INC_DIR)
-CPPFLAGS        := $(INC_FLAGS) -MMD -MP
-CFLAGS          := -std=c11 -Wall -Wextra -Werror -Wshadow -O2 -g \
-                   -fPIC -fvisibility=hidden
-LDFLAGS_SO      := -shared -Wl,-soname,$(LIB_SHARED_SONAME)
-LDFLAGS_BIN     := -L$(BUILD_LIB_DIR) -l$(LIB_NAME) -Wl,-rpath,'$$ORIGIN/../lib'
-LDFLAGS_PLUGIN  := -shared -fPIC
-
-# Source Files
-LIB_SRCS        := $(SRC_DIR)/log.c $(SRC_DIR)/error.c
-DAEMON_SRCS     := $(SRC_DIR)/syswatchd.c
-CTL_SRCS        := $(SRC_DIR)/syswatchctl.c
-PLUGIN_SRCS     := $(PLUGIN_SRC_DIR)/plugin_dummy_cpu.c
-
-# Object Files
-LIB_OBJS        := $(LIB_SRCS:%.c=$(BUILD_DIR)/%.o)
-DAEMON_OBJS     := $(DAEMON_SRCS:%.c=$(BUILD_DIR)/%.o)
-CTL_OBJS        := $(CTL_SRCS:%.c=$(BUILD_DIR)/%.o)
-PLUGIN_OBJS     := $(PLUGIN_SRCS:%.c=$(BUILD_DIR)/%.o)
-
-ALL_OBJS        := $(LIB_OBJS) $(DAEMON_OBJS) $(CTL_OBJS) $(PLUGIN_OBJS)
-DEPS            := $(ALL_OBJS:.o=.d)
+# Directory list for order-only prerequisites
+DIRS             := $(BUILD_LIB_DIR) $(BUILD_BIN_DIR) \
+                    $(OBJ_STATIC_DIR) $(OBJ_PIC_DIR) \
+                    $(OBJ_BIN_DIR) $(OBJ_PLUGIN_DIR)
 
 # ==============================================================================
-# Targets
+# 2. Compiler, Tools & Flags
 # ==============================================================================
+CC  ?= gcc
+AR  := ar
+LN  := ln -sf
 
-.PHONY: all clean verify_symbols run_daemon run_ctl
+# Base flags applied to all compilations
+CPPFLAGS := -I$(INC_DIR) -D_GNU_SOURCE -MMD -MP
+CFLAGS   := -std=c11 -Wall -Wextra -Werror -Wshadow -Wformat=2
+
+# Conditional Build Modes (debug vs release)
+BUILD ?= debug
+ifeq ($(BUILD),debug)
+    CFLAGS += -O0 -ggdb3 -DENABLE_DEBUG_LOG -DSYSWATCH_VERSION=\"0.2.0-debug\"
+else ifeq ($(BUILD),release)
+    CFLAGS += -O2 -g -DNDEBUG -DSYSWATCH_VERSION=\"0.2.0\"
+else
+    $(error Invalid BUILD mode '$(BUILD)'. Use 'debug' or 'release')
+endif
+
+# Linker Flags
+LDFLAGS_SO     := -shared -Wl,-soname,$(LIB_SHARED_SONAME)
+LDFLAGS_BIN    := -L$(BUILD_LIB_DIR) -l$(LIB_NAME) -Wl,-rpath,'$$ORIGIN/../lib'
+LDFLAGS_PLUGIN := -shared -fPIC
+
+# ==============================================================================
+# 3. Source & Object Mapping
+# ==============================================================================
+LIB_SRCS    := $(SRC_DIR)/log.c $(SRC_DIR)/error.c
+DAEMON_SRCS := $(SRC_DIR)/syswatchd.c
+CTL_SRCS    := $(SRC_DIR)/syswatchctl.c
+PLUGIN_SRCS := $(PLUGIN_SRC_DIR)/plugin_dummy_cpu.c
+
+LIB_STATIC_OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_STATIC_DIR)/%.o,$(LIB_SRCS))
+LIB_PIC_OBJS    := $(patsubst $(SRC_DIR)/%.c,$(OBJ_PIC_DIR)/%.o,$(LIB_SRCS))
+DAEMON_OBJS     := $(patsubst $(SRC_DIR)/%.c,$(OBJ_BIN_DIR)/%.o,$(DAEMON_SRCS))
+CTL_OBJS        := $(patsubst $(SRC_DIR)/%.c,$(OBJ_BIN_DIR)/%.o,$(CTL_SRCS))
+PLUGIN_OBJS     := $(patsubst $(PLUGIN_SRC_DIR)/%.c,$(OBJ_PLUGIN_DIR)/%.o,$(PLUGIN_SRCS))
+
+ALL_OBJS        := $(LIB_STATIC_OBJS) $(LIB_PIC_OBJS) $(DAEMON_OBJS) $(CTL_OBJS) $(PLUGIN_OBJS)
+ALL_DEPS        := $(ALL_OBJS:.o=.d)
+
+# ==============================================================================
+# 4. Targets & Rules
+# ==============================================================================
+.PHONY: all check info clean
 
 all: $(BUILD_LIB_DIR)/$(LIB_STATIC) \
      $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL) \
+     $(BUILD_LIB_DIR)/$(LIB_SHARED_SONAME) \
+     $(BUILD_LIB_DIR)/$(LIB_SHARED_LINK) \
+     $(BUILD_LIB_DIR)/$(PLUGIN_TARGET) \
      $(BUILD_BIN_DIR)/$(DAEMON_TARGET) \
-     $(BUILD_BIN_DIR)/$(CTL_TARGET) \
-     $(BUILD_LIB_DIR)/$(PLUGIN_TARGET)
+     $(BUILD_BIN_DIR)/$(CTL_TARGET)
 
-# ------------------------------------------------------------------------------
-# 1. Static Library (libsyswatch.a)
-# ------------------------------------------------------------------------------
-$(BUILD_LIB_DIR)/$(LIB_STATIC): $(LIB_OBJS)
-	@mkdir -p $(dir $@)
+# Directory Creation Rule
+$(DIRS):
+	mkdir -p $@
+
+# --- Static Library ---
+$(BUILD_LIB_DIR)/$(LIB_STATIC): $(LIB_STATIC_OBJS) | $(BUILD_LIB_DIR)
 	$(AR) rcs $@ $^
 
-# ------------------------------------------------------------------------------
-# 2. Shared Library (libsyswatch.so.1.0.0 + Symlinks)
-# ------------------------------------------------------------------------------
-$(BUILD_LIB_DIR)/$(LIB_SHARED_REAL): $(LIB_OBJS)
-	@mkdir -p $(dir $@)
+# --- Shared Library & Symlinks ---
+$(BUILD_LIB_DIR)/$(LIB_SHARED_REAL): $(LIB_PIC_OBJS) | $(BUILD_LIB_DIR)
 	$(CC) $(LDFLAGS_SO) $^ -o $@
-	$(LN) $(LIB_SHARED_REAL) $(BUILD_LIB_DIR)/$(LIB_SHARED_SONAME)
-	$(LN) $(LIB_SHARED_SONAME) $(BUILD_LIB_DIR)/$(LIB_SHARED_LINK)
 
-# ------------------------------------------------------------------------------
-# 3. Dynamic Metric Plugin (plugin_dummy_cpu.so)
-# ------------------------------------------------------------------------------
-$(BUILD_LIB_DIR)/$(PLUGIN_TARGET): $(PLUGIN_OBJS)
-	@mkdir -p $(dir $@)
+$(BUILD_LIB_DIR)/$(LIB_SHARED_SONAME): $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL)
+	$(LN) $(LIB_SHARED_REAL) $@
+
+$(BUILD_LIB_DIR)/$(LIB_SHARED_LINK): $(BUILD_LIB_DIR)/$(LIB_SHARED_SONAME)
+	$(LN) $(LIB_SHARED_SONAME) $@
+
+# --- Runtime Plugin ---
+$(BUILD_LIB_DIR)/$(PLUGIN_TARGET): $(PLUGIN_OBJS) | $(BUILD_LIB_DIR)
 	$(CC) $(LDFLAGS_PLUGIN) $^ -o $@
 
-# ------------------------------------------------------------------------------
-# 4. Binaries (syswatchd & syswatchctl)
-# ------------------------------------------------------------------------------
-$(BUILD_BIN_DIR)/$(DAEMON_TARGET): $(DAEMON_OBJS) $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL)
-	@mkdir -p $(dir $@)
+# --- Executables ---
+$(BUILD_BIN_DIR)/$(DAEMON_TARGET): $(DAEMON_OBJS) $(BUILD_LIB_DIR)/$(LIB_SHARED_LINK) | $(BUILD_BIN_DIR)
 	$(CC) $(DAEMON_OBJS) $(LDFLAGS_BIN) -ldl -o $@
 
-$(BUILD_BIN_DIR)/$(CTL_TARGET): $(CTL_OBJS) $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL)
-	@mkdir -p $(dir $@)
+$(BUILD_BIN_DIR)/$(CTL_TARGET): $(CTL_OBJS) $(BUILD_LIB_DIR)/$(LIB_SHARED_LINK) | $(BUILD_BIN_DIR)
 	$(CC) $(CTL_OBJS) $(LDFLAGS_BIN) -o $@
 
-# ------------------------------------------------------------------------------
-# Compilation Rules
-# ------------------------------------------------------------------------------
-$(BUILD_DIR)/%.o: %.c
-	@mkdir -p $(dir $@)
+# ==============================================================================
+# 5. Static Pattern Compilation Rules
+# ==============================================================================
+# Static library objects (no PIC)
+$(LIB_STATIC_OBJS): $(OBJ_STATIC_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_STATIC_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-# ------------------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------------------
-verify_symbols: all
-	@echo "=== Checking exported symbols in $(LIB_SHARED_REAL) ==="
-	nm -D --defined-only $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL)
-	@echo "=== Checking DT_RUNPATH and DT_NEEDED for syswatchd ==="
-	readelf -d $(BUILD_BIN_DIR)/$(DAEMON_TARGET) | grep -E '(NEEDED|RUNPATH|RPATH)'
+# Shared library objects (with PIC & hidden visibility)
+$(LIB_PIC_OBJS): $(OBJ_PIC_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_PIC_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -fvisibility=hidden -c $< -o $@
+
+# Binary objects
+$(DAEMON_OBJS) $(CTL_OBJS): $(OBJ_BIN_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# Plugin objects
+$(PLUGIN_OBJS): $(OBJ_PLUGIN_DIR)/%.o: $(PLUGIN_SRC_DIR)/%.c | $(OBJ_PLUGIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -c $< -o $@
+
+# ==============================================================================
+# 6. Helper Targets
+# ==============================================================================
+check: all
+	@echo "=== Running syswatch verification tests ==="
+	./$(BUILD_BIN_DIR)/$(DAEMON_TARGET) ./$(BUILD_LIB_DIR)/$(PLUGIN_TARGET)
+	./$(BUILD_BIN_DIR)/$(CTL_TARGET)
+
+info:
+	@echo "BUILD           : $(BUILD)"
+	@echo "CC              : $(CC)"
+	@echo "CFLAGS          : $(CFLAGS)"
+	@echo "CPPFLAGS        : $(CPPFLAGS)"
+	@echo "LDFLAGS_BIN     : $(LDFLAGS_BIN)"
+	@echo "LIB_STATIC_OBJS : $(LIB_STATIC_OBJS)"
+	@echo "LIB_PIC_OBJS    : $(LIB_PIC_OBJS)"
+	@echo "ALL_DEPS        : $(ALL_DEPS)"
 
 clean:
 	rm -rf $(BUILD_DIR)
 
--include $(DEPS)
+-include $(ALL_DEPS)

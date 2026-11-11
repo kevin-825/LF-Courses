@@ -1,0 +1,2 @@
+make -n foo          # Watch make's built-in rule expand: cc foo.c -o foo
+make -d foo | head -n 45  # Watch make check for foo.c, foo.p, foo.f, RCS/foo.c,v, s.foo.c!
