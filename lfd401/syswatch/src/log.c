@@ -11,6 +11,16 @@ static const char *level_strings[] = {
     "ERROR"
 };
 
+__attribute__((constructor))
+static void libsyswatch_init(void) {
+    printf("[libsyswatch] Core library initialized.\n");
+}
+
+__attribute__((destructor))
+static void libsyswatch_fini(void) {
+    printf("[libsyswatch] Core library unloaded.\n");
+}
+
 void sw_log_internal(enum sw_log_level level, const char *file, int line,
                     const char *func, const char *fmt, ...) {
     /* 1. Get high-resolution timestamp (seconds + nanoseconds) */
