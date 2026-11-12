@@ -4,8 +4,36 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <signal.h>
+#include <string.h>
+
+static void trigger_test_crash(const char *plugin_name) {
+    SW_LOG_INFO("Triggering test crash for plugin: %s", plugin_name ? plugin_name : "none");
+    
+    /* Create local struct to verify stack frame in core dump */
+    struct {
+        const char *name;
+        int status_code;
+    } test_ctx = { .name = plugin_name, .status_code = 0xdead };
+
+    (void)test_ctx; /* Avoid unused variable compiler warning */
+
+    /* Intentionally dereference bad memory location */
+    volatile int *bad_ptr = (volatile int *)0xdead0000;
+    *bad_ptr = 42;
+}
 
 int main(int argc, char *argv[]) {
+        /* 1. Enable core dumps on startup */
+    if (sw_enable_core_dumps() != 0) {
+        fprintf(stderr, "Warning: Failed to enable core dumps\n");
+    }
+
+    /* 2. Check for --crash-test flag */
+    if (argc > 1 && strcmp(argv[1], "--crash-test") == 0) {
+        trigger_test_crash("test_plugin");
+    }
+
     const char *plugin_path = (argc > 1) ? argv[1] : "./build/lib/plugin_dummy_cpu.so";
     //char errbuf[256];
 

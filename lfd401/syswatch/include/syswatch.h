@@ -33,6 +33,7 @@ SW_API void sw_log_internal(enum sw_log_level level, const char *file, int line,
     __attribute__((format(printf, 5, 6)));
 
 SW_API const char *sw_strerror(int errnum, char *buf, size_t buflen);
+SW_API int sw_enable_core_dumps(void);
 
 #define SW_LOG_INFO(fmt, ...) \
     do { sw_log_internal(SW_LOG_INFO, __FILE__, __LINE__, __func__, (fmt), ##__VA_ARGS__); } while (0)

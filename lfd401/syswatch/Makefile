@@ -62,7 +62,7 @@ LDFLAGS_PLUGIN := -shared -fPIC
 # ==============================================================================
 # 3. Source & Object Mapping
 # ==============================================================================
-LIB_SRCS    := $(SRC_DIR)/log.c $(SRC_DIR)/error.c
+LIB_SRCS    := $(SRC_DIR)/log.c $(SRC_DIR)/error.c $(SRC_DIR)/crash.c
 DAEMON_SRCS := $(SRC_DIR)/syswatchd.c
 CTL_SRCS    := $(SRC_DIR)/syswatchctl.c
 PLUGIN_SRCS := $(PLUGIN_SRC_DIR)/plugin_dummy_cpu.c
@@ -79,7 +79,7 @@ ALL_DEPS        := $(ALL_OBJS:.o=.d)
 # ==============================================================================
 # 4. Targets & Rules
 # ==============================================================================
-.PHONY: all check info clean
+.PHONY: all check info clean dump-check
 
 all: $(BUILD_LIB_DIR)/$(LIB_STATIC) \
      $(BUILD_LIB_DIR)/$(LIB_SHARED_REAL) \
@@ -157,5 +157,24 @@ info:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+dump-check: build/bin/syswatchd
+	@mkdir -p build
+	@echo "Checking kernel core_pattern..."
+	@cat /proc/sys/kernel/core_pattern
+	@echo "Generating core dump via GDB..."
+	gdb -batch \
+		-ex "b trigger_test_crash" \
+		-ex "run --crash-test" \
+		-ex "generate-core-file build/syswatchd.core" \
+		./build/bin/syswatchd
+	@echo "--- Inspecting Core Dump Metadata ---"
+	readelf -n build/syswatchd.core
+	@echo "--- Running GDB Forensics Checklist ---"
+	gdb -batch \
+		-ex "bt full" \
+		-ex "p \$$siginfo._sifields._sigfault.si_addr" \
+		-ex "info registers" \
+		./build/bin/syswatchd build/syswatchd.core
 
 -include $(ALL_DEPS)
